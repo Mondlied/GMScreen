@@ -16,3 +16,5 @@ As an alternative to the ZIP archive you could just clone the repository as usua
 # Browser compatibility
 
 The app was tested on Firefox 113.0.1 . No work was spent to make it work for other browsers for now.
+
+For mobile browsers several features probably don't work at all.

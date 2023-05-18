@@ -6,49 +6,9 @@
     <title>jQuery UI Resizable - Default functionality</title>
     <link rel="stylesheet" href="http://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css">
     <link rel="stylesheet" href="style/style.css">
-    <style>
-        .resizable {
-            width: 150px;
-            height: 150px;
-            padding: 0.5em;
-            position: absolute;
-        }
-
-        .resizable h3 {
-            text-align: center;
-            margin: 0;
-        }
-        body
-        {
-            min-height: 100vh;
-            margin: 0;
-        }
-        #savedialoginput {
-            margin-top: 1em;
-        }
-    </style>
     <script src="https://code.jquery.com/jquery-3.6.0.js"></script>
     <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.js"></script>
     <script src="script/script.js"></script>
-    <script>
-        $(function () {
-            RestoreState();
-            $("body").on("dblclick", function (e) {
-                var e = Factories.block.Create(e.offsetX, e.offsetY);
-                $("body").append(e)
-            }).on("contextmenu", function (e) {
-                e.stopPropagation();
-                CloseContextMenu();
-                $("body").append(CreateContextMenu(e.offsetX, e.offsetY));
-                return false;
-            }).on("click", function () {
-                CloseContextMenu();
-            });
-            $(window).on("unload", function () {
-                PersistToLocalStorage();
-            });
-        });
-    </script>
 </head>
 <body>
 </body>
