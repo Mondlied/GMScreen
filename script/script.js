@@ -489,6 +489,42 @@ function CreateToplevelContextMenu(x, y) {
     return menu;
 }
 
+function FileDragOver(evt) {
+    if ((evt.dataTransfer != null) && (evt.dataTransfer.items.length == 1)) {
+        evt.preventDefault();
+    }
+}
+
+function ReadDroppedFile(evt) {
+    if ((evt.dataTransfer != null) && (evt.dataTransfer.files.length == 1)) {
+        var file = evt.dataTransfer.files.item(0);
+
+        const re = /^(?:.*[/\\])?([^/\\]*)(\.json)$/gi
+        var fileName = re.exec(file.name)[1];
+
+        var reader = new FileReader();
+        reader.onload = function (e) {
+            try {
+                var droppedData = JSON.parse(e.target.result);
+                var data = droppedData.data;
+
+                if (data instanceof Array) {
+                    activeDatasetName = fileName;
+                    $("body>*").remove();
+                    RestoreStateRecursive($("body"), 0, data, reportError);
+                    document.title = `GM Screen(${activeDatasetName})`;
+                } else {
+                    console.error("dropped file content does not contain a array property 'data'");
+                }
+            } catch (err) {
+                console.error(`error loading dropped file: ${err.message}`);
+            }
+        };
+        reader.readAsText(file);
+        evt.preventDefault();
+    }
+}
+
 // -----------------------------------------------------------------------------
 // initialization
 $(function () {
