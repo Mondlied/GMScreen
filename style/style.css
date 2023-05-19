@@ -37,6 +37,10 @@ table {
 	font-family: Arial, Helvetica, sans-serif;
 }
 
+.block {
+	z-index: 0;
+}
+
 #savedialoginput {
 	margin-top: 1em;
 }

@@ -32,7 +32,7 @@ Each serializable element has a `serializable-<n>` CSS class where `<n>` is the 
 ```
 {
     "type": "<factory name>",
-    "children" : [ ...serailized objects... ], // (optional)
+    "children" : [ ...serialized child objects... ], // (optional)
     ...object-specific properties...
 }
 ```

@@ -86,6 +86,12 @@ const FactoryPrototype = {
             result
                 .data("factory", this)
                 .addClass("serializable-" + depth);
+            if (typeof this.EditorFactory != "undefined") {
+                result.on("dblclick", this, function (e) {
+                        e.stopPropagation();
+                        e.data.StartEdit($(this));
+                });
+            }
             return result;
         }
     },
@@ -136,11 +142,10 @@ function BlockHeadingEditorFactory() {
         "blockHeaderEditor",
         function () {
             var result = $("<input type='text' class='ui-widget-header block-header edit'></input>");
-            var thisFactory = this;
-            result.on('keypress', function (e) {
+            result.on('keypress', this, function (e) {
                 if (e.which == 13) {
                     e.stopPropagation();
-                    thisFactory.CompleteEdit($(this));
+                    e.data.CompleteEdit($(this));
                 }
             });
 
@@ -167,11 +172,6 @@ function BlockHeadingFactory() {
         "blockHeader",
         function () {
             var result = $("<h3 class='ui-widget-header block-header'>Title</h3>");
-            var thisFactory = this;
-            result.on("dblclick", function (e) {
-                e.stopPropagation();
-                thisFactory.StartEdit($(this));
-            });
             return result;
         },
         function (e) {
@@ -192,13 +192,15 @@ function BlockFactory() {
     CreateFactory(this,
         "block",
         function (x, y, depth, mode) {
-            var e = $("<div class='ui-widget-content resizeable'></div>");
+            var e = $("<div class='ui-widget-content resizeable block'></div>");
             if (mode === CREATE) {
                 e.append(Factories.blockHeader.Create(0, 0, depth + 1, CREATE));
             }
             e.css(PositionCss(x, y, { width: "30em", height: "30ex" }));
-            e.resizable().draggable();
-            e.on("dblclick", StopPropagation);
+            e.resizable().draggable()
+                .on("dblclick", StopPropagation)
+                .on("dragstart", function () { $(this).css("z-index", 10); })
+                .on("dragstop", function () { $(this).css("z-index", ""); });
             return e;
         },
         function (el) {
@@ -228,6 +230,9 @@ function BlockFactory() {
         });
 };
 
+/**
+ * A object containing the various objects for providing the parts of the site with functionality
+ */
 var Factories = {};
 
 [
@@ -241,7 +246,9 @@ var Factories = {};
         Factories[f.Type] = f;
     });
 
+// set editors
 Factories.blockHeader.EditorFactory = Factories.blockHeaderEditor;
+
 
 function LogError(e) {
     console.warn(e);
