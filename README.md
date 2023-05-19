@@ -1,6 +1,14 @@
 # GMScreen
 Some simple Web UI for creating a GM Screen in the browser
 
+## User Interaction
+
+In general the following user interactions are planned:
+
+- **Double Click**: edit the element clicked
+- **Mouse Drag**: Move the element (if moveable)
+- **Left Click**: Open a menu for more detailed options for the element clicked.
+
 ## Planned features
 - Freely placeable text blocks & tables on the web page
 - Storage of layout in the local browser data

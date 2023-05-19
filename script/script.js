@@ -95,6 +95,36 @@ const FactoryPrototype = {
             result.type = this.Type;
             return result;
         }
+    },
+    StartEdit(e) {
+        if (typeof this.EditorFactory != "undefined") {
+            var serializationDepth = GetSerializationDepth(e);
+            if (typeof serializationDepth == "undefined") {
+                throw new Error("element has no serialization depth");
+            }
+            var state = GetPersistedDataAsJsonRecursive(e, serializationDepth);
+            var newElement = this.EditorFactory.Create(0, 0, serializationDepth, RESTORE);
+            newElement.data("editedElementFactory", this);
+            this.EditorFactory.Restore(newElement, state);
+            e.replaceWith(newElement);
+            if (this.EditorFactory.OnPostEditorInsert instanceof Function) {
+                this.EditorFactory.OnPostEditorInsert(newElement);
+            }
+        }
+    },
+    CompleteEdit(e) {
+        var editedElementFactory = e.data("editedElementFactory");
+        if (typeof editedElementFactory == "undefined") {
+            throw new Error("editedElementFactory data missing from edited element");
+        }
+        var serializationDepth = GetSerializationDepth(e);
+        if (typeof serializationDepth == "undefined") {
+            throw new Error("element has no serialization depth");
+        }
+        var state = GetPersistedDataAsJsonRecursive(e, serializationDepth);
+        var newElement = editedElementFactory.Create(0, 0, serializationDepth, RESTORE);
+        editedElementFactory.Restore(newElement, state);
+        e.replaceWith(newElement);
     }
 };
 
@@ -106,14 +136,11 @@ function BlockHeadingEditorFactory() {
         "blockHeaderEditor",
         function () {
             var result = $("<input type='text' class='ui-widget-header block-header edit'></input>");
+            var thisFactory = this;
             result.on('keypress', function (e) {
                 if (e.which == 13) {
                     e.stopPropagation();
-
-                    var t = $(this);
-                    var n = Factories.blockHeader.Create(0, 0, GetSerializationDepth(t), RESTORE);
-                    Factories.blockHeader.Restore(n, { text: t.val() });
-                    t.replaceWith(n);
+                    thisFactory.CompleteEdit($(this));
                 }
             });
 
@@ -127,6 +154,9 @@ function BlockHeadingEditorFactory() {
             e.val((typeof t == "undefined") ? "" : t);
         }
     );
+    this.OnPostEditorInsert = function (e) {
+        e.trigger("focus");
+    };
 }
 
 /**
@@ -137,14 +167,10 @@ function BlockHeadingFactory() {
         "blockHeader",
         function () {
             var result = $("<h3 class='ui-widget-header block-header'>Title</h3>");
+            var thisFactory = this;
             result.on("dblclick", function (e) {
                 e.stopPropagation();
-
-                var t = $(this);
-                var n = Factories.blockHeaderEditor.Create(0, 0, GetSerializationDepth(t), RESTORE);
-                Factories.blockHeaderEditor.Restore(n, { text: t.text() });
-                t.replaceWith(n);
-                n.trigger("focus");
+                thisFactory.StartEdit($(this));
             });
             return result;
         },
@@ -215,6 +241,8 @@ var Factories = {};
         Factories[f.Type] = f;
     });
 
+Factories.blockHeader.EditorFactory = Factories.blockHeaderEditor;
+
 function LogError(e) {
     console.warn(e);
 };
@@ -280,6 +308,7 @@ function RestoreState(reportError = LogError)
         if (data instanceof Array) {
             try {
                 RestoreStateRecursive(insertionRoot, 0, data, reportError);
+                document.title = `GM Screen(${activeDatasetName})`;
             } catch (err) {
                 reportError(`error restoring the data: ${err.message}\n   data: ${data}`)
                 alert("error restoring the data; for details see the console");
