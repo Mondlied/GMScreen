@@ -117,7 +117,11 @@ const FactoryPrototype = {
         }
     },
     Serialize: function (f, promises, element) {
-        const type = this.Type;
+        var type = this.Type;
+        const editedFactory = $(element).data("editedElementFactory")
+        if (typeof editedFactory != "undefined") {
+            type = editedFactory.Type;
+        }
         var result = this.SerializeImpl;
         if (result instanceof Promise) {
             var promise = new Promise((resolve, reject) => { })
@@ -154,7 +158,7 @@ const FactoryPrototype = {
 
         }
     },
-    CompleteEdit(e) {
+    CompleteEdit(e, onPostSerialization = null) {
         var editedElementFactory = e.data("editedElementFactory");
         if (typeof editedElementFactory == "undefined") {
             throw new Error("editedElementFactory data missing from edited element");
@@ -167,6 +171,9 @@ const FactoryPrototype = {
 
         PersistDataAsJsonRecursive((data) => {
                 editedElementFactory.Restore(newElement, data);
+                if (onPostSerialization instanceof Function) {
+                    onPostSerialization(e);
+                }
                 e.replaceWith(newElement);
             }, e, serializationDepth);
     }
@@ -329,12 +336,12 @@ const BlockContentFactory = function () {
                 blocks.push({
                     type: "paragraph",
                     data: {
-                        text: $(this).text()
+                        text: $(this).html()
                     }
                 });
             });
 
-            // return editorjs data
+            // return editorjs compatible data
             f({
                 data: {
                     blocks: blocks
@@ -349,7 +356,7 @@ const BlockContentFactory = function () {
                     if (d.type != "paragraph") {
                         throw new Error(`unexpected editorjs type '${d.type}'`);
                     }
-                    e.append($("<p></p>").text(d.data.text));
+                    e.append($("<p></p>").html(d.data.text));
                 });
             }
         }
@@ -384,7 +391,7 @@ const BlockContentEditorFactory = function() {
             promises.push(el.data("editorjs_object").save()
                 .then((data) => {
                     // note: cannot immediately restore the element in editing state, so go with the edited type
-                    f({ data: data, type: el.data("editedElementFactory").Type });
+                    f({ data: data });
                 }));
         },
         function (e, v) {
@@ -402,7 +409,7 @@ const BlockContentEditorFactory = function() {
                 minHeight: 10,
                 onReady: () => {
                     // don't allow element dragging to interfere with editing
-                    $("#editorjs").on({
+                    el.on({
                         "click": StopPropagation,
                         "mousedown": StopPropagation,
                     });
@@ -410,6 +417,14 @@ const BlockContentEditorFactory = function() {
                 autofocus: true,
                 data: data.data
             }));
+    };
+    this.CompleteEdit = function (e, onPostSerialization = null) {
+        FactoryPrototype.CompleteEdit.call(this, e, (el) => {
+            e.data("editorjs_object").destroy();
+            if (onPostSerialization instanceof Function) {
+                onPostSerialization(el);
+            }
+        });
     };
 }
 
