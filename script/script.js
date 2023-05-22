@@ -66,17 +66,19 @@ function GetSerializationDepth(e) {
 /**
  * Helper function for creating factories
  * 
- * @param self {Object}             - the object to initialize
- * @param typeName {string}         - the name to use for the type
- * @param createFn {Function}       - a function that given coordinates x and y of a click, depth and a bool indicating, if the element is created for restoring(true) or not (false), creates a html element
- * @param serializeFn {Function}    - a function that given the jQuery object for the object returns a json object containing the data
- * @param restoreFn {Function}      - a function that given the jQuery object created by this factory and the json data restores the element to its saved state
+ * @param self {Object}                     - the object to initialize
+ * @param typeName {string}                 - the name to use for the type
+ * @param createFn {Function}               - a function that given coordinates x and y of a click, depth and a bool indicating, if the element is created for restoring(true) or not (false), creates a html element
+ * @param serializeFn {Function}            - a function that given the function to pass the result to, an array of promises and a jQuery object for the object calls the function with the data read before all the promises are done
+ * @param restoreFn {Function}              - a function that given the jQuery object created by this factory and the json data restores the element to its saved state
+ * @param createContextMenuFn {Function}    - a function that given the jQuery object created by this factory creates returns a context menu element
  */
-function CreateFactory(self, typeName, createFn, serializeFn, restoreFn) {
+function CreateFactory(self, typeName, createFn, serializeFn, restoreFn, createContextMenuFn = null) {
     self.CreateImpl = createFn;
     self.SerializeImpl = serializeFn;
     self.Restore = restoreFn;
     self.Type = typeName;
+    self.CreateContextMenu = createContextMenuFn;
 }
 
 const FactoryPrototype = {
@@ -92,30 +94,64 @@ const FactoryPrototype = {
                         e.data.StartEdit($(this));
                 });
             }
+            if (this.CreateContextMenu instanceof Function) {
+                result.on("contextmenu", this, function (e) {
+                    e.stopPropagation();
+                    var contextMenu = e.data.CreateContextMenu($(this));
+                    if (typeof contextMenu != "undefined") {
+                        contextMenu
+                            .attr("id", "contextmenu")
+                            .css(PositionCss(e.pageX, e.pageY, { "z-index": 20 }));
+                        $("body").append(contextMenu);
+                        contextMenu.menu();
+                    }
+                    return false;
+                });
+            } else {
+                result.on("contextmenu", function (e) {
+                    e.stopPropagation();
+                    return false;
+                });
+            }
             return result;
         }
     },
-    Serialize: function (element) {
-        var result = this.SerializeImpl(element);
-        if (typeof result != "undefined") {
-            result.type = this.Type;
-            return result;
+    Serialize: function (f, promises, element) {
+        const type = this.Type;
+        var result = this.SerializeImpl;
+        if (result instanceof Promise) {
+            var promise = new Promise((resolve, reject) => { })
         }
+        this.SerializeImpl((data) => {
+            if (typeof data != "undefined") {
+                if (typeof data.type == "undefined") {
+                    data.type = type;
+                }
+                f(data);
+            }
+        }, promises, element);
     },
     StartEdit(e) {
-        if (typeof this.EditorFactory != "undefined") {
+        CloseAllEditors();
+        var editorFactory = this.EditorFactory;
+        if (typeof editorFactory != "undefined") {
             var serializationDepth = GetSerializationDepth(e);
             if (typeof serializationDepth == "undefined") {
                 throw new Error("element has no serialization depth");
             }
-            var state = GetPersistedDataAsJsonRecursive(e, serializationDepth);
-            var newElement = this.EditorFactory.Create(0, 0, serializationDepth, RESTORE);
+            var newElement = editorFactory.Create(0, 0, serializationDepth, RESTORE);
             newElement.data("editedElementFactory", this);
-            this.EditorFactory.Restore(newElement, state);
-            e.replaceWith(newElement);
-            if (this.EditorFactory.OnPostEditorInsert instanceof Function) {
-                this.EditorFactory.OnPostEditorInsert(newElement);
-            }
+
+            // note: editorjs requires being part of the dom tree and being initialized to load the data
+            PersistDataAsJsonRecursive((data) => {
+                    e.replaceWith(newElement);
+                    if (editorFactory.OnPostEditorInsert instanceof Function) {
+                        editorFactory.OnPostEditorInsert(newElement, data);
+                    } else {
+                        editorFactory.Restore(newElement, data);
+                    }
+                }, e, serializationDepth);
+
         }
     },
     CompleteEdit(e) {
@@ -127,12 +163,29 @@ const FactoryPrototype = {
         if (typeof serializationDepth == "undefined") {
             throw new Error("element has no serialization depth");
         }
-        var state = GetPersistedDataAsJsonRecursive(e, serializationDepth);
         var newElement = editedElementFactory.Create(0, 0, serializationDepth, RESTORE);
-        editedElementFactory.Restore(newElement, state);
-        e.replaceWith(newElement);
+
+        PersistDataAsJsonRecursive((data) => {
+                editedElementFactory.Restore(newElement, data);
+                e.replaceWith(newElement);
+            }, e, serializationDepth);
     }
-};
+}
+
+/**
+ * Add events for text area submit
+ * 
+ * @param e {Object}    - the jquery of the object to modify
+ * @param f {Object}    - the factory of the element
+ */
+function AddTextEditorSubmitEvents(e, f) {
+    e.on('keypress', f, function (e) {
+        if (e.which == 13) {
+            e.stopPropagation();
+            e.data.CompleteEdit($(this));
+        }
+    });
+}
 
 /**
  * Editor for caption on top of the block
@@ -142,26 +195,22 @@ function BlockHeadingEditorFactory() {
         "blockHeaderEditor",
         function () {
             var result = $("<input type='text' class='ui-widget-header block-header edit'></input>");
-            result.on('keypress', this, function (e) {
-                if (e.which == 13) {
-                    e.stopPropagation();
-                    e.data.CompleteEdit($(this));
-                }
-            });
-
+            AddTextEditorSubmitEvents(result, this);
             return result;
         },
-        function (e) {
-            return { text: e.val() };
+        function (f, promises, e) {
+            f({ text: e.val() });
         },
         function (e, v) {
             var t = v.text;
             e.val((typeof t == "undefined") ? "" : t);
         }
     );
-    this.OnPostEditorInsert = function (e) {
-        e.trigger("focus");
-    };
+    //this.OnPostEditorInsert = function (e, data) {
+    //    var t = data.text;
+    //    e.val((typeof t == "undefined") ? "" : t);
+    //    e.trigger("focus");
+    //};
 }
 
 /**
@@ -174,8 +223,8 @@ function BlockHeadingFactory() {
             var result = $("<h3 class='ui-widget-header block-header'>Title</h3>");
             return result;
         },
-        function (e) {
-            return { text: e.text() };
+        function (f, promises, e) {
+            f({text: e.text() });
         },
         function (e, v) {
             var t = v.text;
@@ -185,16 +234,28 @@ function BlockHeadingFactory() {
 }
 
 /**
+ * @param e {Object}    - the element to remove
+ */
+function CreateRemoveMenuEntry(e) {
+    return $("<li><div>Delete</div></li>").on("click", e, function (e) {
+        CloseMenus();
+        e.data.remove();
+        e.stopPropagation();
+    });
+}
+
+/**
  * A toplevel block
  * @class
  */
-function BlockFactory() {
+const BlockFactory = function() {
     CreateFactory(this,
         "block",
         function (x, y, depth, mode) {
             var e = $("<div class='ui-widget-content resizeable block'></div>");
             if (mode === CREATE) {
                 e.append(Factories.blockHeader.Create(0, 0, depth + 1, CREATE));
+                e.append(Factories.blockContent.Create(0, 0, depth + 1, CREATE));
             }
             e.css(PositionCss(x, y, { width: "30em", height: "30ex" }));
             e.resizable().draggable()
@@ -203,12 +264,12 @@ function BlockFactory() {
                 .on("dragstop", function () { $(this).css("z-index", ""); });
             return e;
         },
-        function (el) {
+        function (f, promises, el) {
             var result = {};
             ["width", "height", "top", "left"].forEach(prop => {
                 result[prop] = el.css(prop);
             });
-            return result;
+            f(result);
         },
         function (e, v) {
             var css = {
@@ -222,13 +283,135 @@ function BlockFactory() {
                 }
             });
             e.css(css);
+        },
+        function (e) {
+            var menu = $("<ul></ul>");
 
-            var heading = v.heading;
-            if (typeof heading != "undefined") {
-                e.children("h3").text(heading);
+            menu.append(
+                $("<li><div>Append Text</div></li>").on("click", e, function (e) {
+                    var tgt = e.data;
+                    CloseMenus();
+                    var element = Factories.blockText.Create(0, 0, GetSerializationDepth(tgt) + 1, CREATE);
+                    tgt.append(element);
+                    
+                    e.stopPropagation();
+                }),
+                CreateRemoveMenuEntry(e)
+            );
+            menu.menu();
+            return menu;
+        }
+    );
+}
+
+/**
+ * A block content
+ * @class
+ */
+const BlockContentFactory = function () {
+    CreateFactory(this,
+        "blockContent",
+        function (x, y, depth, mode) {
+            var e = $("<div class='block-content'></div>");
+            if (mode === CREATE) {
+                e.append($("<p>...text...</p>"));
             }
-        });
-};
+            return e;
+        },
+        function (f, promises, el) {
+            var blocks = [];
+
+            el.children().each(function () {
+                var tag = this.tagName.toLowerCase();
+                if (tag != "p") {
+                    throw new Error(`serialization not supported for <${tag}> element`);
+                }
+                blocks.push({
+                    type: "paragraph",
+                    data: {
+                        text: $(this).text()
+                    }
+                });
+            });
+
+            // return editorjs data
+            f({
+                data: {
+                    blocks: blocks
+                }
+            });
+        },
+        function (e, v) {
+            if (typeof v.data == "undefined") {
+                e.text("");
+            } else {
+                v.data.blocks.forEach(d => {
+                    if (d.type != "paragraph") {
+                        throw new Error(`unexpected editorjs type '${d.type}'`);
+                    }
+                    e.append($("<p></p>").text(d.data.text));
+                });
+            }
+        }
+    );
+}
+
+const CloseAllEditors = function() {
+    $(".editor").each(function () {
+        const ts = $(this);
+        const factory = ts.data("factory");
+        if (typeof factory != "undefined") {
+            try {
+                factory.CompleteEdit(ts);
+            } catch (err) {
+                console.warn(err);
+            }
+        }
+    });
+}
+
+/**
+ * A block text child
+ * @class
+ */
+const BlockContentEditorFactory = function() {
+    CreateFactory(this,
+        "blockContentEditor",
+        function () {
+            return $("<div class='editor'></div>");
+        },
+        function (f, promises, el) {
+            promises.push(el.data("editorjs_object").save()
+                .then((data) => {
+                    // note: cannot immediately restore the element in editing state, so go with the edited type
+                    f({ data: data, type: el.data("editedElementFactory").Type });
+                }));
+        },
+        function (e, v) {
+            e.data("editorjs_object").render(v.data);
+        }
+    );
+    this.OnPostEditorInsert = function (el, data) {
+        el.data("editorjs_object",
+            new EditorJS({
+                tools: {
+                    table: Table,
+                    header: Header
+                },
+                holder : el[0],
+                minHeight: 10,
+                onReady: () => {
+                    // don't allow element dragging to interfere with editing
+                    $("#editorjs").on({
+                        "click": StopPropagation,
+                        "mousedown": StopPropagation,
+                    });
+                },
+                autofocus: true,
+                data: data.data
+            }));
+    };
+}
 
 /**
  * A object containing the various objects for providing the parts of the site with functionality
@@ -238,7 +421,9 @@ var Factories = {};
 [
     BlockFactory,
     BlockHeadingFactory,
-    BlockHeadingEditorFactory
+    BlockHeadingEditorFactory,
+    BlockContentFactory,
+    BlockContentEditorFactory
 ]
     .forEach(factory => {
         Object.assign(factory.prototype, FactoryPrototype);
@@ -248,15 +433,24 @@ var Factories = {};
 
 // set editors
 Factories.blockHeader.EditorFactory = Factories.blockHeaderEditor;
+Factories.blockContent.EditorFactory = Factories.blockContentEditor;
 
 
-function LogError(e) {
-    console.warn(e);
-};
+const LogError = function (e) {
+    if (e instanceof Error) {
+        console.warn(e.message);
+    } else {
+        console.warn(e);
+    }
+}
 
-function ThrowError(e) {
-    throw new Error(e);
-};
+const ThrowError = function(e) {
+    if (e instanceof Error) {
+        throw e;
+    } else {
+        throw new Error(e);
+    }
+}
 
 /**
  * @param parent {Object}           - a jquery object for the parent to add to
@@ -327,48 +521,118 @@ function RestoreState(reportError = LogError)
 }
 
 /**
+ * Indicates whether an asynchronous save operation is currently taking place 
+ */
+var saveInProgressCount = 0;
+
+/**
+ * @param f {Function}              - a function receiving the data object
+ * @param promises {Array}          - an array of promises that need to be fulfilled to complete the save operation
  * @param element {Object}          - a jquery object for the object to serialize
  * @param depth {Number}            - the depth of the element serialized
  * @param reportError {Function}    - a function receiving a string with the error message, if an issue occurs
  */
-function GetPersistedDataAsJsonRecursive(element, depth, reportError = ThrowError) {
+function PersistDataAsJsonRecursive(f, element, depth, reportError = ThrowError) {
+    var result = null;
+    var promises = [];
+    PersistDataAsJsonRecursiveImpl((data) => { result = data }, promises, element, depth, reportError);
+    if (promises.length == 0) {
+        f(result);
+    } else {
+        ++saveInProgressCount;
+        Promise.allSettled(promises)
+            .then(() => {
+                try {
+                    f(result);
+                } catch (err) {
+                    try {
+                        reportError(err);
+                    } catch (e) {
+                        console.error(e);
+                    }
+                }
+            })
+            .catch((err) => {
+                try {
+                    reportError(err);
+                } catch (e) {
+                    console.error(e);
+                }
+            })
+            .finally(() => { --saveInProgressCount; });
+    }
+}
+
+/**
+ * Helper function for use in PersistDataAsJsonRecursive exclusively
+ */
+function PersistDataAsJsonRecursiveImpl(f, promises, element, depth, reportError) {
     var factory = element.data("factory");
     if (typeof factory == "undefined") {
         reportError(`no factory attached to serializable element at depth ${depth}`);
     }
 
-    var result = factory.Serialize(element);
-
     var children = element.children(".serializable-" + (depth + 1));
 
     if (children.length != 0) {
         var chData = [];
+        var i = 0;
         children.each(function () {
-            var childData = GetPersistedDataAsJsonRecursive($(this), depth + 1, reportError);
-            if (typeof childData != "undefined") {
-                chData.push(childData);
-            }
+            // reserve space for inserting the data
+            const index = chData.length;
+            chData.push(null);
+
+            PersistDataAsJsonRecursiveImpl((data) => { chData[index] = data; }, promises, $(this), depth + 1, reportError);
         });
-        if (chData.length != 0) {
-            result.children = chData;
-        }
+        factory.Serialize((data) => {
+            data.children = chData;
+            f(data);
+        }, promises, element);
+    } else {
+        factory.Serialize(f, promises, element);
     }
-    return result;
 }
 
 /**
  * @param reportError {Function}    - a function receiving a string with the error message, if an issue occurs
  */
-function GetPersistedDataAsJson(reportError = ThrowError)
+function PersistDataAsJson(save, reportError = ThrowError)
 {
     var obj = [];
+    var promises = [];
     $("body>.serializable-0").each(function () {
-        var persistResult = GetPersistedDataAsJsonRecursive($(this), 0, reportError);
-        if (typeof persistResult != "undefined") {
-            obj.push(persistResult);
-        }
+        const index = obj.length;
+        obj.push(null);
+        PersistDataAsJsonRecursiveImpl((data) => { obj[index] = data }, promises, $(this), 0, reportError);
     });
-    return JSON.stringify({ "data": obj });
+    if (promises.length == 0) {
+        try {
+            save(JSON.stringify({ data: obj }));
+        }
+        catch (err) {
+            reportError(`error persisting the data: ${err.message}`);
+        }
+    } else {
+        ++saveInProgressCount;
+        Promise.allSettled(promises)
+            .then(() => {
+                --saveInProgressCount; // cancel save early, since the save function could call persistence functions again
+                try {
+                    save(JSON.stringify({ data: obj }));
+                }
+                catch (err) {
+                    console.error(`error persisting the data: ${err.message}`);
+                }
+            })
+            .catch((err) => {
+                --saveInProgressCount; // cancel save early, since the reportError function could call persistence functions again
+                try {
+                    reportError(err);
+                } catch (e) {
+                    console.error(e);
+                }
+            });
+    }
 }
 
 /**
@@ -382,27 +646,33 @@ function PersistToFile()
         PersistToChosenFile();
         return;
     }
-    const blob = new Blob([GetPersistedDataAsJson()], {
-        type: "application/json"
-    });
-    var url = URL.createObjectURL(blob);
+    PersistDataAsJson(function (data) {
+        const blob = new Blob([data], {
+            type: "application/json"
+        });
+        var url = URL.createObjectURL(blob);
 
-    // temporarily create a link element for setting the name of the download file & trigger the download
-    const tempLink = window.document.createElement('a');
-    tempLink.href = url;
-    tempLink.download = activeDatasetName + ".json";
-    document.body.appendChild(tempLink);
-    tempLink.click();
-    document.body.removeChild(tempLink);
+        // temporarily create a link element for setting the name of the download file & trigger the download
+        const tempLink = window.document.createElement('a');
+        tempLink.href = url;
+        tempLink.download = activeDatasetName + ".json";
+        document.body.appendChild(tempLink);
+        tempLink.click();
+        document.body.removeChild(tempLink);
+    });
 }
 
 /**
  * Save the current data to localStorage
+ * 
+ * @param postSave {Function}   - an optional operation to execute the save is done
  */
 function PersistToLocalStorage() {
     try {
-        localStorage.setItem("dataset-" + activeDatasetName, GetPersistedDataAsJson());
-        localStorage.setItem("dataset", activeDatasetName);
+        PersistDataAsJson((data) => {
+            localStorage.setItem("dataset-" + activeDatasetName, data);
+            localStorage.setItem("dataset", activeDatasetName);
+        });
     } catch (err) {
         console.error(`error persisting data to local storage: \n${err.message}`);
     }
@@ -438,14 +708,14 @@ function PersistToChosenFile() {
                     text = text.slice(0, -4);
                 }
                 activeDatasetName = text;
-                CloseContextMenu();
+                CloseMenus();
 
                 PersistToFile();
             }
         }]
     })
         .on("click", StopPropagation) // prevent closing the dialog on interaction
-        .on("dialogclose", function (e) { CloseContextMenu(); });
+        .on("dialogclose", function (e) { CloseMenus(); });
 
     $("#savedialoginput").val(activeDatasetName);
 }
@@ -453,7 +723,7 @@ function PersistToChosenFile() {
 /**
  * close all popups/menus, ect. 
  */
-function CloseContextMenu() {
+function CloseMenus() {
     $("#contextmenu").remove();
     $("#savedialog").remove();
 }
@@ -467,21 +737,21 @@ function CreateToplevelContextMenu(x, y) {
 
     menu.append(
         $("<li><div>Save</div></li>").on("click", function (e) {
-            CloseContextMenu();
+            CloseMenus();
             PersistToFile();
 
             // a dialog may be opened, if the file isn't
             e.stopPropagation();
         }),
         $("<li><div>Save As...</div></li>").on("click", function (e) {
-            CloseContextMenu();
+            CloseMenus();
             PersistToChosenFile();
 
             // stop the event from closing the newly opened dialog
             e.stopPropagation();
         }),
         $("<li><div>Clear All Memory</div></li>").on("click", function () {
-            CloseContextMenu();
+            CloseMenus();
             localStorage.clear();
         }),
     );
@@ -534,13 +804,22 @@ $(function () {
         $("body").append(e)
     }).on("contextmenu", function (e) {
         e.stopPropagation();
-        CloseContextMenu();
+        CloseMenus();
         $("body").append(CreateToplevelContextMenu(e.offsetX, e.offsetY));
         return false;
     }).on("click", function () {
-        CloseContextMenu();
+        CloseMenus();
     });
-    $(window).on("unload", function () {
+    $(window).on("beforeunload", function (e) {
         PersistToLocalStorage();
+        if (saveInProgressCount > 0) {
+            if (window.confirm("Edit in progress; unable to save the data. Exit nonetheless?")) {
+                console.log("the user decided to ignore data loss on page close");
+            } else {
+                console.log("preventing page close, since data could not be saved synchronously");
+                e.preventDefault(); // delay until saving is done
+                CloseAllEditors();
+            }
+        }
     });
 });
