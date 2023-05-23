@@ -311,6 +311,10 @@ const BlockFactory = function() {
     );
 }
 
+const EditorJsData = function(type, data) {
+    return { type: type, data: data };
+}
+
 /**
  * A block content
  * @class
@@ -330,15 +334,36 @@ const BlockContentFactory = function () {
 
             el.children().each(function () {
                 var tag = this.tagName.toLowerCase();
-                if (tag != "p") {
-                    throw new Error(`serialization not supported for <${tag}> element`);
+                switch (tag) {
+                    case "p":
+                        blocks.push(EditorJsData("paragraph", { text: $(this).html() }));
+                        break;
+                    case "h1":
+                    case "h2":
+                    case "h3":
+                    case "h4":
+                    case "h5":
+                    case "h6":
+                        blocks.push(EditorJsData("header", { text: $(this).html(), level: Number(tag.slice(1)) }));
+                        break;
+                    case "div":
+                        if ($(this).hasClass("table")) {
+                            var content = [];
+                            $(this).children("div.row").each(function() {
+                                var row = [];
+                                $(this).children("div.cell").each(function() {
+                                    row.push($(this).html());
+                                });
+                                content.push(row);
+                            });
+                            blocks.push(EditorJsData("table", { withHeadings: $(this).hasClass("headings"), content: content }));
+                        } else {
+                            throw new Error("div element found without a known class");
+                        }
+                        break;
+                    default:
+                        throw new Error(`serialization not supported for <${tag}> element`);
                 }
-                blocks.push({
-                    type: "paragraph",
-                    data: {
-                        text: $(this).html()
-                    }
-                });
             });
 
             // return editorjs compatible data
@@ -353,10 +378,30 @@ const BlockContentFactory = function () {
                 e.text("");
             } else {
                 v.data.blocks.forEach(d => {
-                    if (d.type != "paragraph") {
-                        throw new Error(`unexpected editorjs type '${d.type}'`);
+                    switch (d.type) {
+                        case "paragraph":
+                            e.append($("<p>").html(d.data.text));
+                            break;
+                        case "header":
+                            e.append($(`<h${d.data.level}>`).html(d.data.text));
+                            break;
+                        case "table":
+                            var table = $("<div class='table'>");
+                            if (d.data.withHeadings) {
+                                table.addClass("headings");
+                            }
+                            d.data.content.forEach((rd) => {
+                                var row = $("<div class='row'>");
+                                rd.forEach((cd) => {
+                                    row.append($("<div class='cell'>").html(cd));
+                                });
+                                table.append(row);
+                            });
+                            e.append(table);
+                            break;
+                        default:
+                            throw new Error(`unexpected editorjs type '${d.type}'`);
                     }
-                    e.append($("<p></p>").html(d.data.text));
                 });
             }
         }
@@ -410,8 +455,16 @@ const BlockContentEditorFactory = function() {
                 onReady: () => {
                     // don't allow element dragging to interfere with editing
                     el.on({
-                        "click": StopPropagation,
-                        "mousedown": StopPropagation,
+                        click: StopPropagation,
+                        dragleave: StopPropagation,
+                        dragover: StopPropagation,
+                        focus: StopPropagation,
+                        focusin: StopPropagation,
+                        keydown: StopPropagation,
+                        keyup: StopPropagation,
+                        mousedown: StopPropagation,
+                        mousemove: StopPropagation,
+                        touchstart: StopPropagation,
                     });
                 },
                 autofocus: true,
