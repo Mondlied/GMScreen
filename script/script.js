@@ -315,6 +315,43 @@ const EditorJsData = function(type, data) {
     return { type: type, data: data };
 }
 
+const CreateListItems = function (tag, parent, items) {
+    if (items.length != 0) {
+        items.forEach((item) => {
+            var i = $("<li>");
+            if (typeof item.content != "undefined") {
+                i.html(item.content);
+            }
+            if (item.items.length != 0) {
+                var lst = $(tag);
+                CreateListItems(tag, lst, item.items);
+                i.append(lst);
+            }
+            parent.append(i);
+        });
+    }
+}
+
+const PersistListElements = function(tag, parent) {
+    var items = [];
+
+    parent.children("li").each(function () {
+        var item = {};
+        var childList = $(this).children(tag);
+        if (childList.length == 0) {
+            item.items = [];
+        } else {
+            item.items = PersistListElements(tag, $(childList[0]));
+        }
+        // clear out the child lists so that we're able to use html()
+        childList.remove();
+        item.content = $(this).html();
+        items.push(item);
+    });
+
+    return items;
+}
+
 /**
  * A block content
  * @class
@@ -361,6 +398,10 @@ const BlockContentFactory = function () {
                             throw new Error("div element found without a known class");
                         }
                         break;
+                    case "ul":
+                    case "ol":
+                        blocks.push(EditorJsData("list", { style: ((tag == "ul") ? "unordered" : "ordered"), items: PersistListElements(tag, $(this).clone()) }));
+                        break;
                     default:
                         throw new Error(`serialization not supported for <${tag}> element`);
                 }
@@ -398,6 +439,12 @@ const BlockContentFactory = function () {
                                 table.append(row);
                             });
                             e.append(table);
+                            break;
+                        case "list":
+                            const listTag = `<${d.data.style[0]}l>`;
+                            var list = $(listTag);
+                            CreateListItems(listTag, list, d.data.items);
+                            e.append(list);
                             break;
                         default:
                             throw new Error(`unexpected editorjs type '${d.type}'`);
@@ -447,8 +494,9 @@ const BlockContentEditorFactory = function() {
         el.data("editorjs_object",
             new EditorJS({
                 tools: {
+                    header: Header,
                     table: Table,
-                    header: Header
+                    list: NestedList,
                 },
                 holder : el[0],
                 minHeight: 10,
