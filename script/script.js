@@ -384,16 +384,24 @@ const BlockContentFactory = function () {
                         blocks.push(EditorJsData("header", { text: $(this).html(), level: Number(tag.slice(1)) }));
                         break;
                     case "div":
-                        if ($(this).hasClass("table")) {
-                            var content = [];
-                            $(this).children("div.row").each(function() {
+                        if (this.classList.contains("table")) {
+                            let content = [];
+                            $(this).children("div.row").each(function () {
                                 var row = [];
-                                $(this).children("div.cell").each(function() {
+                                $(this).children("div.cell").each(function () {
                                     row.push($(this).html());
                                 });
                                 content.push(row);
                             });
                             blocks.push(EditorJsData("table", { withHeadings: $(this).hasClass("headings"), content: content }));
+                        } else if (this.classList.contains('counter')) {
+                            let counter = $(this).data("counter");
+                            blocks.push(EditorJsData("counter", {
+                                display: counter.constructor.name,
+                                text: $(this).children('.label').html(),
+                                current: counter.value,
+                                max: counter.max,
+                            }));
                         } else {
                             throw new Error("div element found without a known class");
                         }
@@ -446,6 +454,30 @@ const BlockContentFactory = function () {
                             CreateListItems(listTag, list, d.data.items);
                             e.append(list);
                             break;
+                        case "counter":
+                            let clazz = CounterDisplayTypes[d.data.display];
+                            if (!clazz) {
+                                throw new Error(`invalid display data entry for counter: ${d.data.display}`);
+                            }
+
+                            let counterElement = document.createElement('div');
+                            counterElement.classList.add('counter');
+
+                            let label = document.createElement("div");
+                            label.innerHTML = d.data.text;
+                            label.classList.add('label');
+                            counterElement.appendChild(label);
+
+                            let counter = new clazz();
+                            counter.max = d.data.max;
+                            counter.value = d.data.current;
+
+                            $(counterElement).data('counter', counter);
+                            let renderedCounter = counter.render();
+                            renderedCounter.classList.add('display');
+                            counterElement.appendChild(renderedCounter);
+                            e.append(counterElement);
+                            break;
                         default:
                             throw new Error(`unexpected editorjs type '${d.type}'`);
                     }
@@ -497,6 +529,10 @@ const BlockContentEditorFactory = function() {
                     header: Header,
                     table: Table,
                     list: NestedList,
+                    counter: {
+                        class: Counter,
+                        inlineToolbar: true,
+                    },
                 },
                 holder : el[0],
                 minHeight: 10,
@@ -925,6 +961,7 @@ $(function () {
         return false;
     }).on("click", function () {
         CloseMenus();
+        CloseAllEditors();
     });
     $(window).on("beforeunload", function (e) {
         PersistToLocalStorage();
