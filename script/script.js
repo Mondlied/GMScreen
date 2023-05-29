@@ -201,7 +201,8 @@ function BlockHeadingEditorFactory() {
     CreateFactory(this,
         "blockHeaderEditor",
         function () {
-            var result = $("<input type='text' class='ui-widget-header block-header edit'></input>");
+            var result = $("<input type='text' class='ui-widget-header block-header edit editor'></input>");
+
             AddTextEditorSubmitEvents(result, this);
             return result;
         },
@@ -213,11 +214,6 @@ function BlockHeadingEditorFactory() {
             e.val((typeof t == "undefined") ? "" : t);
         }
     );
-    //this.OnPostEditorInsert = function (e, data) {
-    //    var t = data.text;
-    //    e.val((typeof t == "undefined") ? "" : t);
-    //    e.trigger("focus");
-    //};
 }
 
 /**
@@ -267,6 +263,7 @@ const BlockFactory = function() {
             e.css(PositionCss(x, y, { width: "30em", height: "30ex" }));
             e.resizable().draggable()
                 .on("dblclick", StopPropagation)
+                .on('click', StopPropagation)
                 .on("dragstart", function () { $(this).css("z-index", 10); })
                 .on("dragstop", function () { $(this).css("z-index", ""); });
             return e;
@@ -394,14 +391,6 @@ const BlockContentFactory = function () {
                                 content.push(row);
                             });
                             blocks.push(EditorJsData("table", { withHeadings: $(this).hasClass("headings"), content: content }));
-                        } else if (this.classList.contains('counter')) {
-                            let counter = $(this).data("counter");
-                            blocks.push(EditorJsData("counter", {
-                                display: counter.constructor.name,
-                                text: $(this).children('.label').html(),
-                                current: counter.value,
-                                max: counter.max,
-                            }));
                         } else {
                             throw new Error("div element found without a known class");
                         }
@@ -454,30 +443,6 @@ const BlockContentFactory = function () {
                             CreateListItems(listTag, list, d.data.items);
                             e.append(list);
                             break;
-                        case "counter":
-                            let clazz = CounterDisplayTypes[d.data.display];
-                            if (!clazz) {
-                                throw new Error(`invalid display data entry for counter: ${d.data.display}`);
-                            }
-
-                            let counterElement = document.createElement('div');
-                            counterElement.classList.add('counter');
-
-                            let label = document.createElement("div");
-                            label.innerHTML = d.data.text;
-                            label.classList.add('label');
-                            counterElement.appendChild(label);
-
-                            let counter = new clazz();
-                            counter.max = d.data.max;
-                            counter.value = d.data.current;
-
-                            $(counterElement).data('counter', counter);
-                            let renderedCounter = counter.render();
-                            renderedCounter.classList.add('display');
-                            counterElement.appendChild(renderedCounter);
-                            e.append(counterElement);
-                            break;
                         default:
                             throw new Error(`unexpected editorjs type '${d.type}'`);
                     }
@@ -529,10 +494,8 @@ const BlockContentEditorFactory = function() {
                     header: Header,
                     table: Table,
                     list: NestedList,
-                    counter: {
-                        class: Counter,
-                        inlineToolbar: true,
-                    },
+                    inline_bar_counter: InlineBarCounterTool,
+                    inline_token_counter: InlineTokenCounterTool,
                 },
                 holder : el[0],
                 minHeight: 10,

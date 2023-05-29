@@ -1,3 +1,65 @@
+.counter-editor-overlay {
+    background-color: #000b;
+    width: 100vw;
+    height: 100vh;
+    position: absolute;
+    left: 0;
+    top: 0;
+    display: flex;
+    justify-content: center;
+    align-content: center;
+    z-index: 100;
+}
+
+.counter-editor-overlay .editor-grid {
+    flex: none;
+    display: grid;
+    grid-template-columns: repeat(2, none);
+    grid-template-rows: repeat(3, none);
+    justify-content: stretch;
+    align-content: center;
+    background-color: white;
+    padding: 1em;
+    margin: auto;
+    gap: 1ex;
+}
+
+.counter-editor-overlay .editor-grid .label,
+.counter-editor-overlay .editor-grid .accept {
+    grid-column: 1;
+}
+
+.counter-editor-overlay .editor-grid input,
+.counter-editor-overlay .editor-grid .reject {
+    grid-column: 2;
+}
+
+.counter-editor-overlay .editor-grid .value {
+    grid-row: 1;
+}
+
+.counter-editor-overlay .editor-grid .max {
+    grid-row: 2;
+}
+
+.counter-editor-overlay .editor-grid button {
+    grid-row: 3;
+    width: 4em;
+}
+
+bar-counter {
+    /*
+    --bar-color: red;
+    --border-color: green;
+    --text-color: purple;
+    --bar-background: yellow;
+    */
+}
+
+token-counter {
+    /*todo*/
+}
+
 .counter-block .current, .counter-block .max {
     width: 4em;
     margin-left: 1em;

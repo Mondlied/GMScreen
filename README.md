@@ -5,15 +5,13 @@ Some simple Web UI for creating a GM Screen in the browser
 
 In general the following user interactions are planned:
 
-- **Double Click**: edit the element clicked
+- **Double Click**: edit the element clicked / create a new block (background only)
 - **Mouse Drag**: Move the element (if moveable)
 - **Left Click**: Open a menu for more detailed options for the element clicked.
 
 ## Planned features
-- Freely placeable text blocks & tables on the web page
-- Storage of layout in the local browser data
-- Export of layout to json file
-- Import of layout from json file
+
+- UI improvements
 
 ## "Running" the App
 

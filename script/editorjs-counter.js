@@ -1,480 +1,190 @@
-const RemoveAllChildNodes = (n) => {
-    while (n.firstChild) {
-        n.remove(n.firstChild);
-    }
-};
+/* 
+GMScreen - Some website code for running an editor in the browser
 
-class CounterBase {
-    #propertiesChangedListeners = [];
-    #listenerCallInProgress = false;
+Copyright(C) 2023 Fabian Klein
 
-    constructor() {
-    }
+This library is free software; you can redistribute it and/or
+modify it under the terms of the GNU Lesser General Public
+License as published by the Free Software Foundation; either
+version 2.1 of the License, or (at your option) any later version.
 
-    onPropertiesUpdated(current, max) {
-        if (!this.#listenerCallInProgress) {
-            this.#listenerCallInProgress = true;
-            this.#propertiesChangedListeners.forEach((f) => {
-                try {
-                    f.call(this, current, max);
-                } catch (err) {
-                    console.error("error in listener\n" + err);
-                }
-            });
-            this.#listenerCallInProgress = false;
-        }
-    }
+This library is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+Lesser General Public License for more details.
 
-    registerPropertiesChangedListener(l) {
-        if (!(l instanceof Function)) {
-            throw new TypeError(`expected a Function, but got ${l}`);
-        }
-        this.#propertiesChangedListeners.push(l);
-    }
+You should have received a copy of the GNU Lesser General Public
+License along with this library; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301
+USA
+*/
 
-    unregisterPropertiesChangedListener(l) {
-        let i = this.#propertiesChangedListeners.indexOf(l);
-        if (i >= 0) {
-            this.#propertiesChangedListeners.splice(i, 1);
-        }
+/**
+ * Base class for counter-related EditorJS inline tools 
+ */
+class CounterToolBase {
+    #api
+    #button
+    #state
+    #tag = 'token-counter';
+    #icon;
+
+    set state(state) {
+        this.#state = state;
+
+        this.#button.classList.toggle(this.#api.styles.inlineToolButtonActive, state);
     }
 
-    unregisterAllPropertiesChangedListeners() {
-        this.#propertiesChangedListeners = [];
-    }
-}
-
-class BarCounter extends CounterBase {
-    // values
-    #value;
-    #max;
-
-    // html elements
-    #bar;
-    #element;
-    #inputMax;
-    #inputValue;
-
-    constructor(value = 0, max = 1) {
-        super();
-        if (value < 0) {
-            throw new RangeError("value must be non-negative");
-        }
-        if (value > max) {
-            throw new RangeError("value must not be greater than the max value");
-        }
-        this.#value = value;
-        this.#max = max;
+    get state() {
+        return this.#state;
     }
 
-    render()
-    {
-        if (!this.#element) {
-            this.#element = document.createElement('div');
-            this.#element.classList.add('bar-counter');
-
-            // block event propagation
-            ["click", "dblclick", "contextmenu"].forEach(e => {
-                this.#element.addEventListener(e, ev => { ev.stopPropagation(); });
-            });
-        } else {
-            RemoveAllChildNodes(this.#element);
-        }
-
-        this.#bar = document.createElement('div');
-        this.#bar.classList.add('bar-counter-bar');
-
-        this.#element.appendChild(this.#bar);
-
-        let inputContainer = document.createElement('div');
-        inputContainer.classList.add('bar-counter-inputs');
-
-        this.#inputValue = document.createElement('input');
-        this.#inputValue.type = 'number';
-        this.#inputValue.addEventListener('input', () => {
-            let num = Number.parseInt(this.#inputValue.value);
-            if (!Number.isNaN(num)) {
-                this.#value = num;
-                this.#update_ui();
-                this.onPropertiesUpdated(this.#value, this.#max);
-            }
-        });
-
-        let inputSeparator = document.createElement('span');
-        inputSeparator.innerText = '/';
-
-        this.#inputMax = document.createElement('input');
-        this.#inputMax.type = 'number';
-        this.#inputMax.addEventListener('input', () => {
-            let num = Number.parseInt(this.#inputMax.value);
-            if (!Number.isNaN(num)) {
-                this.#max = num;
-                this.#update_ui();
-                this.onPropertiesUpdated(this.#value, this.#max);
-            }
-        });
-
-        inputContainer.appendChild(this.#inputValue);
-        inputContainer.appendChild(inputSeparator);
-        inputContainer.appendChild(this.#inputMax);
-
-        this.#element.appendChild(inputContainer);
-
-        this.#update_ui();
-
-        return this.#element;
+    static get isInline() {
+        return true;
     }
 
-    #update_ui() {
-        if (this.#bar) {
-            this.#bar.style.width = `${100 * this.#value / this.#max}%`;
-            this.#inputValue.max = this.#max;
-            this.#inputMax.min = this.#value;
-            this.#inputValue.value = this.#value;
-            this.#inputMax.value = this.#max;
-        }
-    }
-
-    get value() {
-        return this.#value;
-    }
-
-    set value(val) {
-        val = Number(val);
-        if (val > this.#max) {
-            throw new RangeError(`the value must be <= max (${val} > ${this.#max})`);
-        }
-        if (val < 0) {
-            throw new RangeError(`the value must be non-negative, but got ${val}`);
-        }
-        this.#value = val;
-        this.#update_ui();
-        this.onPropertiesUpdated(this.#value, this.#max);
-    }
-
-    get max() {
-        return this.#max;
-    }
-
-    set max(val) {
-        val = Number(val);
-        if (val <= 0) {
-            throw RangeError(`max must be positive, but got ${val}`);
-        }
-        this.#max = val;
-        if (this.#value > val) {
-            this.#value = val;
-        }
-        this.#update_ui();
-        this.onPropertiesUpdated(this.#value, this.#max);
-    }
-
-    destroy() {
-        this.unregisterAllPropertiesChangedListeners();
-        this.#element.remove();
-    }
-
-}
-
-class TokensCounter extends CounterBase {
-    // values
-    #value;
-    #max;
-
-    // html elements
-    #tokens;
-    #add;
-    #subtract;
-    #element;
-
-    constructor(value = 0, max = 1) {
-        super();
-        if (value < 0) {
-            throw new RangeError("value must be non-negative");
-        }
-        if (value > max) {
-            throw new RangeError("value must not be greater than the max value");
-        }
-        this.#value = value;
-        this.#max = max;
-    }
-
-    #createTokenElement() {
-        let result = document.createElement('div');
-        result.classList.add('token-counter-token');
-        return result;
-    }
-
-    #createToken(index) {
-        let result = this.#createTokenElement();
-
-        var counter = this;
-
-        result.addEventListener("click", function (ev) {
-            ev.stopPropagation();
-            if (this.classList.contains("filled")) {
-                if ((index == 0) && (counter.value == 1)) {
-                    counter.value = 0;
-                } else {
-                    counter.value = index + 1;
-                }
-            } else {
-                counter.value = index + 1;
-            }
-        });
-        return result;
+    constructor(api, tag, icon) {
+        this.#api = api;
+        this.#tag = tag;
+        this.#icon = icon;
+        this.#button = null;
+        this.#state = false;
     }
 
     render() {
-        this.#tokens = [];
-
-        if (!this.#element) {
-            this.#element = document.createElement('div');
-            this.#element.classList.add('token-counter');
-
-            // block event propagation
-            ["click", "dblclick", "contextmenu"].forEach(e => {
-                this.#element.addEventListener(e, ev => { ev.stopPropagation(); });
-            });
-        } else {
-            RemoveAllChildNodes(this.#element);
-        }
-        this.#subtract = this.#createTokenElement();
-        this.#subtract.classList.add("subtract");
-        this.#subtract.innerText = "-";
-        this.#subtract.addEventListener("click", (e) => {
-            try {
-                this.max = this.#max - 1;
-            } catch (err) {
-            }
-            e.stopPropagation();
-        });
-        this.#element.appendChild(this.#subtract);
-
-        this.#add = this.#createTokenElement();
-        this.#add.classList.add("add");
-        this.#add.innerText = "+";
-        this.#add.addEventListener("click", (e) => {
-            this.max = this.#max + 1;
-            e.stopPropagation();
-        });
-        this.#element.appendChild(this.#add);
-
-        this.#update_tokens();
-        return this.#element;
+        this.#button = document.createElement('button');
+        this.#button.innerHTML = this.#icon;
+        this.#button.classList.add(this.#api.styles.inlineToolButton);
+        return this.#button;
     }
 
-    #update_tokens() {
-        if (this.#tokens) {
-            if (this.#max < this.#tokens.length) {
-                // shrink token list
-                for (let i = this.#max; i < this.#tokens.length; ++i) {
-                    this.#tokens[i].remove();
+    surround(range) {
+        let selectedExistingElement = this.#findTagInRange(range);
+        if (!selectedExistingElement) {
+            selectedExistingElement = this.#api.selection.findParentTag(this.#tag.toUpperCase());
+        }
+
+        if (selectedExistingElement) {
+            range.selectNode(selectedExistingElement);
+            this.#unwrap(range, selectedExistingElement);
+            return;
+        }
+
+        this.#wrap(range);
+    }
+
+    #wrap(range) {
+        const selectedText = range.extractContents();
+
+        const counter = document.createElement(this.#tag);
+
+        let p = document.createElement('p');
+        p.appendChild(selectedText);
+        let text = p.innerText;
+
+        // extract 'a/b' substing to use for initial values
+        let [dummy, currentStr, maxStr] = (/(\d+)\s*\/\s*(\d+)/g.exec(text) || [null, '0', '1']);
+
+        counter.max = Number(maxStr);
+        counter.value = Number(currentStr);
+
+        counter.style.display = 'inline-block';
+
+        range.insertNode(counter);
+
+        this.#api.selection.expandToTag(counter);
+    }
+
+    #unwrap(range, edit) {
+        const text = document.createTextNode(`${edit.value} / ${edit.max}`);
+        range.deleteContents();
+        range.insertNode(text);
+    }
+
+    #findTagInRange(range) {
+        let pos = range.startContainer;
+        while (pos != range.endContainer) {
+            if (pos instanceof Element) {
+                if (pos.tagName == this.#tag.toUpperCase()) {
+                    return pos;
                 }
-                this.#tokens.splice(this.#max);
-            }
-
-            let maxFilled = Math.min(this.#value, this.#tokens.length);
-            let i = 0;
-            for (; i < maxFilled; ++i) {
-                this.#tokens[i].classList.add("filled");
-            }
-            for (; i < this.#tokens.length; ++i) {
-                this.#tokens[i].classList.remove("filled");
-            }
-
-            for (let i = this.#tokens.length; i < this.#max; ++i) {
-                // grow token list
-                let token = this.#createToken(i);
-                if (i < this.#value) {
-                    token.classList.add("filled");
+                let res = pos.querySelector(this.#tag);
+                if (res) {
+                    return res;
                 }
-                this.#tokens.push(token);
-                //this.#element.insertBefore(token, this.#add);
-                this.#element.appendChild(token);
+            }
+            pos = pos.nextSibling;
+        }
+        if (pos instanceof Element) {
+            let res = pos.querySelector(this.#tag);
+            if (res) {
+                return res;
             }
         }
     }
 
-    get value() {
-        return this.#value;
+    #findTagInSelection(selection) {
+        for (let i = 0; i < selection.rangeCount; ++i) {
+            let res = this.#findTagInRange(selection.getRangeAt(i));
+            if (res) {
+                return res;
+            }
+        }
     }
 
-    set value(val) {
-        val = Number(val);
-        if (val > this.#max) {
-            throw new RangeError(`the value must be <= max (${val} > ${this.#max})`);
+    checkState(selection) {
+        let state = !!this.#findTagInSelection(selection);
+        if (!state) {
+            let tag = this.#api.selection.findParentTag(this.#tag.toUpperCase());
+            if (tag) {
+                state = true;
+            }
         }
-        if (val < 0) {
-            throw new RangeError(`the value must be non-negative, but got ${val}`);
-        }
-        if (!Number.isInteger(val)) {
-            throw RangeError(`the value must be an integer, but got ${val}`);
-        }
-        this.#value = val;
-        this.#update_tokens();
-        this.onPropertiesUpdated(this.#value, this.#max);
-    }
-
-    get max() {
-        return this.#max;
-    }
-
-    set max(val) {
-        val = Number(val);
-        if (val <= 0) {
-            throw RangeError(`max must be positive, but got ${val}`);
-        }
-        if (!Number.isInteger(val)) {
-            throw RangeError(`max must be an integer, but got ${val}`);
-        }
-        this.#max = val;
-        if (this.#value > val) {
-            this.#value = val;
-        }
-        this.#update_tokens();
-        this.onPropertiesUpdated(this.#value, this.#max);
-    }
-
-    destroy() {
-        this.unregisterAllPropertiesChangedListeners();
-        this.#element.remove();
+        this.state = state;
     }
 }
 
-const CounterDisplayTypes = {
-    BarCounter: BarCounter,
-    TokensCounter: TokensCounter
-};
+/**
+ * EditorJS tool for creating an inline token counter 
+ */
+class InlineTokenCounterTool extends CounterToolBase {
 
-class Counter {
+    constructor({ api }) {
+        super(api,
+            'token-counter',
+            '<svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="8" fill="black" stroke="black" width="5" height="5"/><rect x="7.5" y="8" fill="black" stroke="black" width="5" height="5"/><rect x="14" y="8" fill="transparent" stroke="black" width="5" height="5"/></svg>');
+    }
 
-    #data;
-    #settings;
-
-    #counter;
-    #counterDisplay;
-    #label;
-    #wrapper;
-    #tunes = { };
-
-    static get toolbox() {
+    static get sanitize() {
         return {
-            title: 'Counter',
-            icon: '<div class="counter-toolbox" style="width: 17px; height: 17px; display: inline-block;">x/y</div>'
+            'token-counter': {
+                style: true,
+                value: true,
+                max: true,
+                columns: true,
+            }
         };
     }
+}
 
-    validate(savedData) {
-        return Number.isInteger(savedData.current)
-            && Number.isInteger(savedData.max)
-            && (savedData.current >= 0)
-            && (savedData.max >= savedData.current)
-            && (!savedData.display || (Object.keys(CounterDisplayTypes).indexOf(savedData.display) != -1));
+/**
+ * EditorJS tool for creating an inline bar counter 
+ */
+class InlineBarCounterTool extends CounterToolBase {
+
+    constructor({ api }) {
+        super(api,
+            'bar-counter',
+            '<svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="8" stroke="black" fill="transparent" width="18" height="5"/><rect x="1" y="8" fill="black" width="8" height="5"/></svg>');
     }
 
-    constructor({ data }) {
-        data.current = Number(data.current || 0);
-        if (!(data.current >= 0)) { // note written this way because of NaN possibility
-            data.current = 0;
-        }
-        data.max = Number(data.max || 1);
-        if (!(data.max >= data.current)) {
-            data.max = Math.min(data.current, 1);
-        }
-
-        data.display = (CounterDisplayTypes[data.display] || BarCounter).name;
-
-        this.#data = data;
-        this.#settings = [
-            {
-                name: 'TokensCounter',
-                icon: `<svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="8" fill="black" stroke="black" width="5" height="5"/><rect x="7.5" y="8" fill="black" stroke="black" width="5" height="5"/><rect x="14" y="8" fill="transparent" stroke="black" width="5" height="5"/></svg>`
-            },
-            {
-                name: 'BarCounter',
-                icon: `<svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="8" stroke="black" fill="transparent" width="18" height="5"/><rect x="1" y="8" fill="black" width="8" height="5"/></svg>`
-            }
-        ];
-    }
-
-    render() {
-        if (this.#wrapper) {
-            this.#wrapper.innerHTML = "";
-            this.#counter.destroy();
-        } else {
-            this.#wrapper = document.createElement("div");
-            this.#wrapper.classList.add("counter-block");
-        }
-
-        if (this.#counter) {
-            this.#counter.destroy();
-        }
-
-        let clazz = CounterDisplayTypes[this.#data.display ? this.#data.display : "BarCounter"] || BarCounter;
-        this.#counter = new clazz();
-
-        this.#label = document.createElement("div");
-        this.#label.classList.add("label");
-        this.#label.contentEditable = true;
-
-        this.#label.innerHTML = this.#data && this.#data.text ? this.#data.text : "";
-
-        this.#wrapper.appendChild(this.#label);
-        this.#wrapper.appendChild(this.#counterDisplay = this.#counter.render());
-        this.#counterDisplay.classList.add("display");
-        this.#counter.max = this.#data.max;
-        this.#counter.value = this.#data.current;
-
-        return this.#wrapper;
-    }
-
-    save(blockContent) {
+    static get sanitize() {
         return {
-            display: this.#counter.constructor.name,
-            text: this.#label.innerHTML || "",
-            current: this.#counter.value,
-            max: this.#counter.max,
-        }
-    }
-
-    #toggleTune(tuneName) {
-        if (tuneName == this.#counter.constructor.name) {
-            // activate other instead
-            this.#settings.forEach(tune => {
-                if (tune.name != tuneName) {
-                    tuneName = tune.name;
-                }
-            });
-        }
-
-        this.#data = this.save(this.#wrapper);
-        this.#data.display = tuneName;
-
-        this.render();
-
-        this.#settings.forEach(tune => {
-            let t = this.#tunes[tune.name];
-            t.classList.toggle('cdx-settings-button--active', tuneName == tune.name);
-        });
-    }
-
-    renderSettings() {
-        const wrapper = document.createElement('div');
-
-        this.#settings.forEach(tune => {
-            let button = document.createElement('div');
-            button.classList.add('cdx-settings-button');
-            button.classList.toggle('cdx-settings-button--active', tune.name == this.#counter.constructor.name);
-            button.innerHTML = tune.icon;
-
-            button.addEventListener('click', () => {
-                this.#toggleTune(tune.name);
-            });
-
-            wrapper.appendChild(button);
-            this.#tunes[tune.name] = button;
-        });
-        return wrapper;
+            'bar-counter': {
+                style: true,
+                value: true,
+                max: true,
+            }
+        };
     }
 }
